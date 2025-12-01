@@ -15,6 +15,7 @@ export const DetailEditor: React.FC = () => {
     syncProject,
     updatePageLocal,
     generateDescriptions,
+    generatePageDescription,
     isGlobalLoading,
     taskProgress,
   } = useProjectStore();
@@ -42,8 +43,23 @@ export const DetailEditor: React.FC = () => {
   };
 
   const handleRegeneratePage = async (pageId: string) => {
-    // TODO: 实现单页重新生成
-    console.log('重新生成页面:', pageId);
+    if (!currentProject) return;
+    
+    const page = currentProject.pages.find((p) => p.id === pageId);
+    if (!page) return;
+    
+    // 如果已有描述，询问是否覆盖
+    if (page.description_content) {
+      if (!confirm('该页面已有描述，重新生成将覆盖现有内容，确定继续吗？')) {
+        return;
+      }
+    }
+    
+    try {
+      await generatePageDescription(pageId);
+    } catch (error: any) {
+      alert(`生成失败: ${error.message || '未知错误'}`);
+    }
   };
 
   if (!currentProject) {

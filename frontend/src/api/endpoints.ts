@@ -127,11 +127,12 @@ export const generateDescriptions = async (projectId: string): Promise<ApiRespon
  */
 export const generatePageDescription = async (
   projectId: string,
-  pageId: string
+  pageId: string,
+  forceRegenerate: boolean = false
 ): Promise<ApiResponse> => {
   const response = await apiClient.post<ApiResponse>(
     `/api/projects/${projectId}/pages/${pageId}/generate/description`,
-    {} // 发送空对象而不是 undefined
+    { force_regenerate: forceRegenerate }
   );
   return response.data;
 };

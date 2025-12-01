@@ -33,6 +33,7 @@ interface ProjectState {
   // 生成操作
   generateOutline: () => Promise<void>;
   generateDescriptions: () => Promise<void>;
+  generatePageDescription: (pageId: string) => Promise<void>;
   generateImages: () => Promise<void>;
   generatePageImage: (pageId: string) => Promise<void>;
   editPageImage: (pageId: string, editPrompt: string) => Promise<void>;
@@ -352,6 +353,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!currentProject) return;
 
     await startAsyncTask(() => api.generateDescriptions(currentProject.id));
+  },
+
+  // 生成单页描述
+  generatePageDescription: async (pageId: string) => {
+    const { currentProject } = get();
+    if (!currentProject) return;
+
+    set({ isGlobalLoading: true, error: null });
+    try {
+      // 传递 force_regenerate=true 以允许重新生成已有描述
+      await api.generatePageDescription(currentProject.id, pageId, true);
+      // 刷新项目数据
+      await get().syncProject();
+    } catch (error: any) {
+      set({ error: error.message || '生成描述失败' });
+      throw error;
+    } finally {
+      set({ isGlobalLoading: false });
+    }
   },
 
   // 生成图片
