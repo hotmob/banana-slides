@@ -438,7 +438,7 @@ class FileParserService:
             Tuple of (enhanced_markdown, failed_image_count)
         """
         if not self.gemini_client:
-            return markdown_content
+            return markdown_content, 0
         
         # Extract all image URLs from markdown (both with and without alt text)
         # Support both http/https URLs and relative paths
@@ -449,7 +449,7 @@ class FileParserService:
         
         if not matches:
             logger.info("No markdown image syntax found")
-            return markdown_content
+            return markdown_content, 0
         
         # Filter to only images without alt text (empty brackets)
         images_to_caption = []
@@ -463,7 +463,7 @@ class FileParserService:
         
         if not images_to_caption:
             logger.info(f"Found {len(matches)} images in markdown, but all have descriptions. Skipping caption generation.")
-            return markdown_content
+            return markdown_content, 0
         
         logger.info(f"Found {len(images_to_caption)} images without descriptions out of {len(matches)} total, generating captions...")
         
