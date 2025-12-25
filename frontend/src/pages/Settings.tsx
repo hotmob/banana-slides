@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Key, Image, Zap, Save, RotateCcw, Globe, FileText } from 'lucide-react';
+import { Home, Key, Image, Zap, Save, RotateCcw, Globe, FileText, CheckCircle } from 'lucide-react';
 import { Button, Input, Card, Loading, useToast, useConfirm } from '@/components/shared';
 import * as api from '@/api/endpoints';
 import type { OutputLanguage } from '@/api/endpoints';
@@ -191,6 +191,7 @@ export const Settings: React.FC = () => {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
@@ -260,6 +261,34 @@ export const Settings: React.FC = () => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    setIsVerifying(true);
+    try {
+      const response = await api.verifyApiKey();
+      if (response.data) {
+        if (response.data.available) {
+          show({ 
+            message: '✓ API 配置正常，连接成功！', 
+            type: 'success' 
+          });
+        } else {
+          show({ 
+            message: response.data.message || 'API 配置不可用', 
+            type: 'error' 
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('验证 API 配置失败:', error);
+      show({
+        message: '验证失败: ' + (error?.response?.data?.error?.message || error?.message || '未知错误'),
+        type: 'error'
+      });
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -401,7 +430,7 @@ export const Settings: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-banana-50 to-yellow-50 flex items-center justify-center">
-        <Loading text="加载设置中..." />
+        <Loading message="加载设置中..." />
       </div>
     );
   }
@@ -445,20 +474,34 @@ export const Settings: React.FC = () => {
                   <div className="space-y-4">
                     {section.fields.map((field) => renderField(field))}
                     {section.title === '大模型 API 配置' && (
-                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-gray-700">
-                          API 密匙获取可前往{' '}
-                          <a
-                            href="https://aihubmix.com/?aff=17EC"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 underline font-medium"
+                      <>
+                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-sm text-gray-700">
+                            API 密匙获取可前往{' '}
+                            <a
+                              href="https://aihubmix.com/?aff=17EC"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:text-blue-800 underline font-medium"
+                            >
+                              AIHubmix
+                            </a>
+                            , 减小迁移成本
+                          </p>
+                        </div>
+                        <div className="mt-3">
+                          <Button
+                            variant="secondary"
+                            icon={<CheckCircle size={18} />}
+                            onClick={handleVerify}
+                            loading={isVerifying}
+                            disabled={isVerifying || isSaving}
+                            className="w-full sm:w-auto"
                           >
-                            AIHubmix
-                          </a>
-                          , 减小迁移成本
-                        </p>
-                      </div>
+                            {isVerifying ? '验证中...' : '测试 API 连接'}
+                          </Button>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>

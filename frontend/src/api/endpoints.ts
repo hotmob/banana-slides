@@ -801,3 +801,11 @@ export const resetSettings = async (): Promise<ApiResponse<Settings>> => {
   const response = await apiClient.post<ApiResponse<Settings>>('/api/settings/reset');
   return response.data;
 };
+
+/**
+ * 验证 API key 是否可用
+ */
+export const verifyApiKey = async (): Promise<ApiResponse<{ available: boolean; message: string }>> => {
+  const response = await apiClient.post<ApiResponse<{ available: boolean; message: string }>>('/api/settings/verify');
+  return response.data;
+};

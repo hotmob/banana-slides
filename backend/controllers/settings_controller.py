@@ -200,6 +200,76 @@ def reset_settings():
         )
 
 
+@settings_bp.route("/verify", methods=["POST"], strict_slashes=False)
+def verify_api_key():
+    """
+    POST /api/settings/verify - 验证当前API key是否可用
+    通过调用一个轻量的gemini-3-flash-preview测试请求（思考budget=0）来判断
+    
+    Returns:
+        {
+            "data": {
+                "available": true/false,
+                "message": "提示信息"
+            }
+        }
+    """
+    try:
+        from services.ai_providers import get_text_provider
+        
+        # 使用 gemini-3-flash-preview 模型进行验证（思考budget=0，最小开销）
+        verification_model = "gemini-3-flash-preview"
+        
+        # 尝试创建provider并调用一个简单的测试请求
+        try:
+            provider = get_text_provider(model=verification_model)
+            # 调用一个简单的测试请求（思考budget=0，最小开销）
+            response = provider.generate_text("Hello", thinking_budget=0)
+            
+            logger.info("API key verification successful")
+            return success_response({
+                "available": True,
+                "message": "API key 可用"
+            })
+            
+        except ValueError as ve:
+            # API key未配置
+            logger.warning(f"API key not configured: {str(ve)}")
+            return success_response({
+                "available": False,
+                "message": "API key 未配置，请在设置中配置 API key 和 API Base URL"
+            })
+        except Exception as e:
+            # API调用失败（可能是key无效、余额不足等）
+            error_msg = str(e)
+            logger.warning(f"API key verification failed: {error_msg}")
+            
+            # 根据错误信息判断具体原因
+            if "401" in error_msg or "unauthorized" in error_msg.lower() or "invalid" in error_msg.lower():
+                message = "API key 无效或已过期，请在设置中检查 API key 配置"
+            elif "429" in error_msg or "quota" in error_msg.lower() or "limit" in error_msg.lower():
+                message = "API 调用超限或余额不足，请在设置中检查配置"
+            elif "403" in error_msg or "forbidden" in error_msg.lower():
+                message = "API 访问被拒绝，请在设置中检查 API key 权限"
+            elif "timeout" in error_msg.lower():
+                message = "API 调用超时，请在设置中检查网络连接和 API Base URL"
+            else:
+                message = f"API 调用失败，请在设置中检查配置: {error_msg}"
+            
+            return success_response({
+                "available": False,
+                "message": message
+            })
+            
+    except Exception as e:
+        logger.error(f"Error verifying API key: {str(e)}")
+        return error_response(
+            "VERIFY_API_KEY_ERROR",
+            f"验证 API key 时出错: {str(e)}",
+            500,
+        )
+
+
 def _sync_settings_to_config(settings: Settings):
     """Sync settings to Flask app config"""
     # Sync AI provider format (always sync, has default value)

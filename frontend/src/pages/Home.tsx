@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sparkles, FileText, FileEdit, ImagePlus, Paperclip, Palette, Lightbulb, Search, Settings } from 'lucide-react';
 import { Button, Textarea, Card, useToast, MaterialGeneratorModal, ReferenceFileList, ReferenceFileSelector, FilePreviewModal, ImagePreviewList, SiteStatusBanner } from '@/components/shared';
 import { TemplateSelector, getTemplateFile } from '@/components/shared/TemplateSelector';
-import { listUserTemplates, type UserTemplate, uploadReferenceFile, type ReferenceFile, associateFileToProject, triggerFileParse, uploadMaterial, associateMaterialsToProject } from '@/api/endpoints';
+import { listUserTemplates, type UserTemplate, uploadReferenceFile, type ReferenceFile, associateFileToProject, triggerFileParse, uploadMaterial, associateMaterialsToProject, verifyApiKey } from '@/api/endpoints';
 import { useProjectStore } from '@/store/useProjectStore';
 
 type CreationType = 'idea' | 'outline' | 'description';
@@ -370,6 +370,35 @@ export const Home: React.FC = () => {
     }
 
     try {
+      // 在创建项目前先验证 API key 是否可用
+      try {
+        const verifyResult = await verifyApiKey();
+        if (!verifyResult.data.available) {
+          // API key 不可用，提示用户并跳转到设置页
+          show({ 
+            message: verifyResult.data.message || 'API key 不可用，请在设置中配置', 
+            type: 'error' 
+          });
+          // 延迟跳转，让用户看到提示信息
+          setTimeout(() => {
+            navigate('/settings');
+          }, 2000);
+          return;
+        }
+      } catch (error: any) {
+        // 验证接口调用失败，可能是网络问题
+        console.error('验证 API key 失败:', error);
+        show({ 
+          message: '无法验证 API 配置，请检查网络连接或在设置中确认配置', 
+          type: 'error' 
+        });
+        // 延迟跳转，让用户看到提示信息
+        setTimeout(() => {
+          navigate('/settings');
+        }, 2000);
+        return;
+      }
+
       // 如果有模板ID但没有File，按需加载
       let templateFile = selectedTemplate;
       if (!templateFile && (selectedTemplateId || selectedPresetTemplateId)) {
