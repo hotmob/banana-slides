@@ -316,7 +316,8 @@ class ImageEditabilityService:
         parent_id: Optional[str] = None,
         parent_bbox: Optional[BBox] = None,
         root_image_size: Optional[Tuple[int, int]] = None,
-        element_type: Optional[str] = None
+        element_type: Optional[str] = None,
+        root_image_path: Optional[str] = None
     ) -> EditableImage:
         """
         核心方法：将图片转换为可编辑结构（递归）
@@ -328,6 +329,7 @@ class ImageEditabilityService:
             parent_bbox: 当前图片在父图中的bbox位置
             root_image_size: 根图片尺寸（用于全局坐标计算）
             element_type: 元素类型（如'table'），用于选择不同的识别服务
+            root_image_path: 根图片路径（用于 Gemini inpainting）
         
         Returns:
             EditableImage 对象，包含所有提取的元素和子元素
@@ -340,9 +342,11 @@ class ImageEditabilityService:
         width, height = img.size
         logger.info(f"{'  ' * depth}图片尺寸: {width}x{height}")
         
-        # 如果是根图片，记录根图片尺寸
+        # 如果是根图片，记录根图片尺寸和路径
         if root_image_size is None:
             root_image_size = (width, height)
+        if root_image_path is None:
+            root_image_path = image_path
         
         # 2. 根据元素类型选择识别服务
         if element_type == 'table' and self.baidu_table_ocr_provider:
@@ -429,7 +433,8 @@ class ImageEditabilityService:
             clean_background = self._generate_clean_background(
                 image_path=image_path,
                 elements=elements,
-                image_id=image_id
+                image_id=image_id,
+                root_image_path=root_image_path
             )
             if clean_background:
                 logger.info(f"{'  ' * depth}Clean background生成成功: {clean_background}")
@@ -443,7 +448,8 @@ class ImageEditabilityService:
                 depth=depth,
                 image_id=image_id,
                 root_image_size=root_image_size,
-                current_image_size=(width, height)
+                current_image_size=(width, height),
+                root_image_path=root_image_path
             )
         else:
             logger.info(f"{'  ' * depth}已达最大递归深度 {self.max_depth}，不再递归")
@@ -745,7 +751,8 @@ class ImageEditabilityService:
         image_path: str,
         elements: List[EditableElement],
         image_id: str,
-        expand_pixels: int = 10
+        expand_pixels: int = 10,
+        root_image_path: Optional[str] = None
     ) -> Optional[str]:
         """生成clean background（消除所有元素）"""
         if not self.inpainting_service:
@@ -763,6 +770,12 @@ class ImageEditabilityService:
             img_size = img.size
             img_width, img_height = img_size
             logger.info(f"图像尺寸: {img_width}x{img_height}")
+            
+            # 如果是 Gemini provider 且有根图像路径，加载完整页面图像
+            full_page_img = None
+            if self.inpainting_service.provider_type == "gemini" and root_image_path:
+                logger.info(f"🌟 使用完整 PPT 页面图像进行 Gemini inpainting: {root_image_path}")
+                full_page_img = Image.open(root_image_path)
             
             # 输出bbox详细信息，并检查是否覆盖过大
             if bboxes:
@@ -805,7 +818,8 @@ class ImageEditabilityService:
                 expand_pixels=expand_pixels,
                 merge_bboxes=False,
                 merge_threshold=20,
-                save_mask_path=str(mask_path)
+                save_mask_path=str(mask_path),
+                full_page_image=full_page_img
             )
             
             if result_img is None:
@@ -958,7 +972,8 @@ class ImageEditabilityService:
         depth: int,
         image_id: str,
         root_image_size: Tuple[int, int],
-        current_image_size: Tuple[int, int]
+        current_image_size: Tuple[int, int],
+        root_image_path: Optional[str] = None
     ):
         """递归处理子元素
         
@@ -969,6 +984,7 @@ class ImageEditabilityService:
             image_id: 当前图片ID
             root_image_size: 根图片尺寸
             current_image_size: 当前图片尺寸
+            root_image_path: 根图片路径
         """
         for element in elements:
             if not self._should_recurse_into_element(element, mineru_result_dir, current_image_size):
@@ -989,7 +1005,8 @@ class ImageEditabilityService:
                     parent_id=image_id,
                     parent_bbox=element.bbox_global,  # 传递全局bbox用于坐标映射
                     root_image_size=root_image_size,
-                    element_type=element.element_type  # 传递元素类型
+                    element_type=element.element_type,  # 传递元素类型
+                    root_image_path=root_image_path  # 传递根图像路径
                 )
                 
                 # 将子图的元素添加到当前元素的children

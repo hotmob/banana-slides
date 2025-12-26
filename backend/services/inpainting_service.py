@@ -65,18 +65,18 @@ class InpaintingService:
                 self.provider_type = "gemini"
             else:
                 # 使用火山引擎 Inpainting Provider（默认）
-            access_key = config.VOLCENGINE_ACCESS_KEY
-            secret_key = config.VOLCENGINE_SECRET_KEY
-            timeout = config.VOLCENGINE_INPAINTING_TIMEOUT
-            
-            if not access_key or not secret_key:
-                raise ValueError("火山引擎 Access Key 和 Secret Key 未配置")
-            
-            self.provider = VolcengineInpaintingProvider(
-                access_key=access_key,
-                secret_key=secret_key,
-                timeout=timeout
-            )
+                access_key = config.VOLCENGINE_ACCESS_KEY
+                secret_key = config.VOLCENGINE_SECRET_KEY
+                timeout = config.VOLCENGINE_INPAINTING_TIMEOUT
+                
+                if not access_key or not secret_key:
+                    raise ValueError("火山引擎 Access Key 和 Secret Key 未配置")
+                
+                self.provider = VolcengineInpaintingProvider(
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    timeout=timeout
+                )
                 self.provider_type = "volcengine"
         else:
             self.provider = provider
@@ -92,7 +92,8 @@ class InpaintingService:
         merge_bboxes: bool = False,
         merge_threshold: int = 10,
         use_retry: bool = True,
-        save_mask_path: Optional[str] = None
+        save_mask_path: Optional[str] = None,
+        full_page_image: Optional[Image.Image] = None
     ) -> Optional[Image.Image]:
         """
         根据边界框列表消除图像中的指定区域
@@ -107,6 +108,8 @@ class InpaintingService:
             merge_bboxes: 是否合并重叠或相邻的边界框（默认False）
             merge_threshold: 合并阈值，边界框距离小于此值时会合并（默认10像素）
             use_retry: 是否使用重试机制（默认True）
+            save_mask_path: Mask 保存路径（可选）
+            full_page_image: 完整的 PPT 页面图像（仅用于 Gemini provider）
             
         Returns:
             处理后的图像，失败返回 None
@@ -149,17 +152,19 @@ class InpaintingService:
                 except Exception as e:
                     logger.warning(f"⚠️ 保存mask图像失败: {e}")
             
-            # 调用火山引擎 inpainting 服务
+            # 调用 inpainting 服务
             if use_retry:
                 result = self.provider.inpaint_with_retry(
                     original_image=image,
                     mask_image=mask,
-                    max_retries=self.config.VOLCENGINE_INPAINTING_MAX_RETRIES
+                    max_retries=self.config.VOLCENGINE_INPAINTING_MAX_RETRIES,
+                    full_page_image=full_page_image
                 )
             else:
                 result = self.provider.inpaint_image(
                     original_image=image,
-                    mask_image=mask
+                    mask_image=mask,
+                    full_page_image=full_page_image
                 )
             
             if result is not None:
