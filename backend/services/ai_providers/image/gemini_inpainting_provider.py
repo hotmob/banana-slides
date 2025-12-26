@@ -116,16 +116,18 @@ class GeminiInpaintingProvider:
         original_image: Image.Image,
         mask_image: Image.Image,
         inpaint_mode: str = "remove",
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        full_page_image: Optional[Image.Image] = None
     ) -> Optional[Image.Image]:
         """
         使用 Gemini 和掩码进行图像编辑
         
         Args:
-            original_image: 原始图像
+            original_image: 原始图像（如果提供 full_page_image 则不使用）
             mask_image: 掩码图像（白色=消除，黑色=保留）
             inpaint_mode: 修复模式（未使用，保留兼容性）
             custom_prompt: 自定义 prompt（如果为 None 则使用默认）
+            full_page_image: 完整的 PPT 页面图像（16:9），如果提供则直接使用，不扩展
             
         Returns:
             处理后的图像，失败返回 None
@@ -133,23 +135,31 @@ class GeminiInpaintingProvider:
         try:
             logger.info("🚀 开始调用 Gemini inpainting")
             
-            # 保存原始尺寸
-            original_size = original_image.size
+            # 判断使用哪个图像
+            if full_page_image is not None:
+                # 使用完整的 PPT 页面图像（16:9）
+                logger.info("📄 使用完整 PPT 页面图像（16:9）")
+                use_full_page = True
+                working_image = full_page_image
+                original_size = full_page_image.size
+            else:
+                # 使用传入的 original_image 并扩展到 16:9
+                logger.info("📄 使用传入图像并扩展到 16:9")
+                use_full_page = False
+                working_image = original_image
+                original_size = original_image.size
             
             # 1. 转换图像格式
             # 原图转换为 RGB
-            if original_image.mode in ('RGBA', 'LA', 'P'):
-                if original_image.mode == 'RGBA':
-                    background = Image.new('RGB', original_image.size, (255, 255, 255))
-                    background.paste(original_image, mask=original_image.split()[3])
-                    original_image = background
+            if working_image.mode in ('RGBA', 'LA', 'P'):
+                if working_image.mode == 'RGBA':
+                    background = Image.new('RGB', working_image.size, (255, 255, 255))
+                    background.paste(working_image, mask=working_image.split()[3])
+                    working_image = background
                 else:
-                    original_image = original_image.convert('RGB')
+                    working_image = working_image.convert('RGB')
             
             # Mask 转换为 RGB（Gemini 需要）
-            # 注意：Gemini 的 mask 约定可能与火山引擎不同
-            # 火山：黑色=保留，白色=消除
-            # Gemini：需要测试，可能需要反转
             if mask_image.mode != 'RGB':
                 # 转换灰度图为RGB
                 mask_rgb = Image.new('RGB', mask_image.size)
@@ -159,11 +169,17 @@ class GeminiInpaintingProvider:
                     mask_rgb = mask_image.convert('RGB')
                 mask_image = mask_rgb
             
-            # 2. 扩展到 16:9 比例（Gemini 要求）
-            expanded_original, crop_box = self._expand_to_16_9(original_image, fill_color=(255, 255, 255))
-            expanded_mask, _ = self._expand_to_16_9(mask_image, fill_color=(0, 0, 0))  # mask用黑色填充
-            
-            logger.info(f"📷 图像尺寸: 原图={original_size}, 扩展后={expanded_original.size}")
+            # 2. 如果使用完整页面图像，不扩展；否则扩展到 16:9
+            if use_full_page:
+                # 直接使用完整页面图像，不扩展
+                final_image = working_image
+                final_mask = mask_image
+                logger.info(f"📷 图像尺寸: {final_image.size} (完整页面)")
+            else:
+                # 扩展到 16:9 比例（Gemini 要求）
+                final_image, crop_box = self._expand_to_16_9(working_image, fill_color=(255, 255, 255))
+                final_mask, _ = self._expand_to_16_9(mask_image, fill_color=(0, 0, 0))  # mask用黑色填充
+                logger.info(f"📷 图像尺寸: 原图={original_size}, 扩展后={final_image.size}")
             
             # 3. 构建 prompt
             prompt = custom_prompt or self.DEFAULT_PROMPT
@@ -173,8 +189,8 @@ class GeminiInpaintingProvider:
             # 根据 Gemini 文档，image editing 需要同时提供原图和 mask
             # 直接传递 PIL Image 对象和文本，SDK 会自动处理
             contents = [
-                expanded_original,
-                expanded_mask,
+                final_image,
+                final_mask,
                 prompt
             ]
             
@@ -212,13 +228,18 @@ class GeminiInpaintingProvider:
                         # 从 inline_data.data 读取图像
                         image_data = part.inline_data.data
                         result_image = Image.open(BytesIO(image_data))
-                        logger.info(f"✅ Gemini Inpainting 成功！扩展图尺寸: {result_image.size}, {result_image.mode}")
+                        logger.info(f"✅ Gemini Inpainting 成功！结果尺寸: {result_image.size}, {result_image.mode}")
                         
-                        # 裁剪回原始尺寸
-                        cropped_result = result_image.crop(crop_box)
-                        logger.info(f"✂️  裁剪回原始尺寸: {cropped_result.size}")
-                        
-                        return cropped_result
+                        # 根据是否使用完整页面决定是否裁剪
+                        if use_full_page:
+                            # 使用完整页面，直接返回结果
+                            logger.info(f"📄 返回完整页面结果: {result_image.size}")
+                            return result_image
+                        else:
+                            # 裁剪回原始尺寸
+                            cropped_result = result_image.crop(crop_box)
+                            logger.info(f"✂️  裁剪回原始尺寸: {cropped_result.size}")
+                            return cropped_result
                     except Exception as e:
                         logger.error(f"解析图像数据失败: {e}")
                         continue
@@ -237,7 +258,8 @@ class GeminiInpaintingProvider:
         original_image: Image.Image,
         mask_image: Image.Image,
         max_retries: int = 2,
-        retry_delay: int = 1
+        retry_delay: int = 1,
+        full_page_image: Optional[Image.Image] = None
     ) -> Optional[Image.Image]:
         """
         带重试的 inpaint 调用
@@ -247,6 +269,7 @@ class GeminiInpaintingProvider:
             mask_image: 掩码图像
             max_retries: 最大重试次数
             retry_delay: 重试延迟（秒）
+            full_page_image: 完整的 PPT 页面图像（16:9），如果提供则直接使用
             
         Returns:
             处理后的图像，失败返回 None
@@ -255,7 +278,11 @@ class GeminiInpaintingProvider:
         
         for attempt in range(max_retries):
             try:
-                result = self.inpaint_image(original_image, mask_image)
+                result = self.inpaint_image(
+                    original_image, 
+                    mask_image,
+                    full_page_image=full_page_image
+                )
                 if result is not None:
                     return result
                     
