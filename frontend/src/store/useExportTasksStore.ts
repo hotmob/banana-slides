@@ -111,14 +111,24 @@ export const useExportTasksStore = create<ExportTasksState>()(
             };
 
             if (task.progress) {
-              updates.progress = task.progress;
+              // Parse progress if it's a string (from database JSON field)
+              let progressData = task.progress;
+              if (typeof progressData === 'string') {
+                try {
+                  progressData = JSON.parse(progressData);
+                } catch (e) {
+                  console.warn('[ExportTasksStore] Failed to parse progress:', e);
+                }
+              }
+              
+              updates.progress = progressData;
               
               // Extract download URL if available
-              if (task.progress.download_url) {
-                updates.downloadUrl = task.progress.download_url;
+              if (progressData.download_url) {
+                updates.downloadUrl = progressData.download_url;
               }
-              if (task.progress.filename) {
-                updates.filename = task.progress.filename;
+              if (progressData.filename) {
+                updates.filename = progressData.filename;
               }
             }
 

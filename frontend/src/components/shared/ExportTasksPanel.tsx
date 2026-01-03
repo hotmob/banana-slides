@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, X, Trash2, ChevronDown, ChevronUp, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, X, Trash2, FileText, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useExportTasksStore, type ExportTask, type ExportTaskType } from '@/store/useExportTasksStore';
 import type { Page } from '@/types';
 import { Button } from './Button';
@@ -85,12 +85,27 @@ const TaskItem: React.FC<{ task: ExportTask; pages: Page[]; onRemove: () => void
 
   const pageRangeText = getPageRangeText(task.pageIds, pages);
 
+  // 计算进度百分比
+  const getProgressPercent = () => {
+    if (!task.progress) return 0;
+    if (task.progress.percent !== undefined) return task.progress.percent;
+    if (task.progress.total > 0) {
+      return Math.round((task.progress.completed / task.progress.total) * 100);
+    }
+    return 0;
+  };
+
+  const progressPercent = getProgressPercent();
+  const isProcessing = task.status === 'PROCESSING' || task.status === 'RUNNING' || task.status === 'PENDING';
+
   return (
-    <div className="flex items-center gap-3 py-2 px-3 hover:bg-gray-50 rounded-lg transition-colors">
-      <TaskStatusIcon status={task.status} />
+    <div className="flex items-start gap-3 py-2.5 px-3 hover:bg-gray-50 rounded-lg transition-colors">
+      <div className="mt-0.5">
+        <TaskStatusIcon status={task.status} />
+      </div>
       
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-gray-700 truncate">
             {taskTypeLabels[task.type]}
           </span>
@@ -102,24 +117,55 @@ const TaskItem: React.FC<{ task: ExportTask; pages: Page[]; onRemove: () => void
           </span>
         </div>
         
-        {(task.status === 'PROCESSING' || task.status === 'RUNNING') && task.progress && (
-          <div className="mt-1">
-            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-banana-500 transition-all duration-300"
-                style={{ width: `${task.progress.percent || 0}%` }}
-              />
-            </div>
-            {task.progress.current_step && (
-              <p className="text-xs text-gray-500 mt-0.5 truncate">
-                {task.progress.current_step}
-              </p>
+        {/* 进度条 - 显示在进行中的任务 */}
+        {isProcessing && (
+          <div className="mt-2 space-y-1.5">
+            {task.progress ? (
+              <>
+                {/* 进度百分比和当前步骤 */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-banana-600">
+                    {progressPercent > 0 ? `${progressPercent}%` : '准备中...'}
+                  </span>
+                  {task.progress.current_step && (
+                    <span className="text-xs text-gray-500 truncate max-w-[140px]" title={task.progress.current_step}>
+                      {task.progress.current_step}
+                    </span>
+                  )}
+                </div>
+                
+                {/* 进度条 */}
+                <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-banana-500 to-banana-600 transition-all duration-500 ease-out"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                
+                {/* 显示消息日志（如果有） */}
+                {task.progress.messages && task.progress.messages.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {task.progress.messages.slice(-2).map((msg, idx) => (
+                      <div key={idx} className="text-xs text-gray-500 truncate" title={msg}>
+                        {msg}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="h-2.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-banana-500 animate-pulse" style={{ width: '30%' }} />
+                </div>
+                <span className="text-xs text-gray-500 whitespace-nowrap">等待中...</span>
+              </div>
             )}
           </div>
         )}
         
         {task.status === 'FAILED' && task.errorMessage && (
-          <p className="text-xs text-red-500 mt-0.5 truncate" title={task.errorMessage}>
+          <p className="text-xs text-red-500 mt-1 truncate" title={task.errorMessage}>
             {task.errorMessage}
           </p>
         )}
@@ -172,6 +218,13 @@ export const ExportTasksPanel: React.FC<ExportTasksPanelProps> = ({ projectId, p
     task => task.status === 'COMPLETED' || task.status === 'FAILED'
   );
   
+  // 当有进行中的任务时，自动展开面板
+  useEffect(() => {
+    if (activeTasks.length > 0 && !isExpanded) {
+      setIsExpanded(true);
+    }
+  }, [activeTasks.length, isExpanded]);
+  
   if (filteredTasks.length === 0) {
     return null;
   }
@@ -184,7 +237,7 @@ export const ExportTasksPanel: React.FC<ExportTasksPanelProps> = ({ projectId, p
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 flex items-center bg-gray-50 hover:bg-gray-100 transition-colors"
       >
         <div className="flex items-center gap-2">
           <FileText size={18} className="text-gray-600" />
@@ -197,11 +250,6 @@ export const ExportTasksPanel: React.FC<ExportTasksPanelProps> = ({ projectId, p
             </span>
           )}
         </div>
-        {isExpanded ? (
-          <ChevronUp size={18} className="text-gray-500" />
-        ) : (
-          <ChevronDown size={18} className="text-gray-500" />
-        )}
       </button>
       
       {/* Content */}
