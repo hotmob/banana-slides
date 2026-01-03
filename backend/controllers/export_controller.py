@@ -169,7 +169,7 @@ def export_editable_pptx(project_id):
     Request body (JSON):
         {
             "filename": "optional_custom_name.pptx",
-            "max_depth": 2,      // 可选，递归深度（默认2）
+            "max_depth": 1,      // 可选，递归深度（默认1=不递归，2=递归一层）
             "max_workers": 4     // 可选，并发数（默认4）
         }
     
@@ -216,7 +216,8 @@ def export_editable_pptx(project_id):
             filename += '.pptx'
         
         # 递归分析参数
-        max_depth = data.get('max_depth', 2)
+        # max_depth 语义：1=只处理表层不递归，2=递归一层（处理图片/图表中的子元素）
+        max_depth = data.get('max_depth', 1)  # 默认不递归，与测试脚本一致
         max_workers = data.get('max_workers', 4)
         
         # Validate parameters
