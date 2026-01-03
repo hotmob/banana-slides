@@ -279,9 +279,40 @@ class MinerUElementExtractor(ElementExtractor):
                     bbox[3] * scale_y
                 ]
                 
+                # 对于 header/footer，需要根据实际内容判断类型
+                actual_content_type = block_type
+                if block_type in ['header', 'footer']:
+                    # 检查是否包含图片
+                    has_image = False
+                    if block.get('blocks'):
+                        for sub_block in block['blocks']:
+                            if sub_block.get('type') == 'image_body':
+                                has_image = True
+                                break
+                    
+                    # 检查是否包含文本
+                    has_text = False
+                    if block.get('lines'):
+                        for line in block['lines']:
+                            for span in line.get('spans', []):
+                                if span.get('type') in ['text', 'inline_equation'] and span.get('content', '').strip():
+                                    has_text = True
+                                    break
+                            if has_text:
+                                break
+                    
+                    # 根据内容判断实际类型
+                    if has_image and not has_text:
+                        actual_content_type = 'image'
+                    elif has_text:
+                        actual_content_type = 'text'  # 将 header/footer 转换为 text
+                    else:
+                        # 默认当作文本处理
+                        actual_content_type = 'text'
+                
                 # 提取content（文本）
                 content = None
-                if block_type in ['text', 'title', 'header', 'footer']:
+                if actual_content_type in ['text', 'title']:
                     if block.get('lines'):
                         line_texts = []
                         for line in block['lines']:
@@ -309,7 +340,7 @@ class MinerUElementExtractor(ElementExtractor):
                 
                 # 提取img_path（图片/表格）- 转换为绝对路径
                 img_path = None
-                if block_type in ['image', 'table']:
+                if actual_content_type in ['image', 'table']:
                     if block.get('blocks'):
                         for sub_block in block['blocks']:
                             for line in sub_block.get('lines', []):
@@ -330,10 +361,13 @@ class MinerUElementExtractor(ElementExtractor):
                 
                 return {
                     'bbox': scaled_bbox,
-                    'type': block_type,
+                    'type': actual_content_type,  # 使用实际内容类型而不是原始类型
                     'content': content,
                     'image_path': img_path,  # 现在是绝对路径
-                    'metadata': block
+                    'metadata': {
+                        **block,
+                        'original_type': block_type  # 保留原始类型（header/footer）在metadata中
+                    }
                 }
             
             # 处理主要内容块（para_blocks）
