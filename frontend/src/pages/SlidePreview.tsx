@@ -82,11 +82,9 @@ export const SlidePreview: React.FC = () => {
   });
   const [extraRequirements, setExtraRequirements] = useState<string>('');
   const [isSavingRequirements, setIsSavingRequirements] = useState(false);
-  const [isExtraRequirementsExpanded, setIsExtraRequirementsExpanded] = useState(false);
   const isEditingRequirements = useRef(false); // 跟踪用户是否正在编辑额外要求
   const [templateStyle, setTemplateStyle] = useState<string>('');
   const [isSavingTemplateStyle, setIsSavingTemplateStyle] = useState(false);
-  const [isTemplateStyleExpanded, setIsTemplateStyleExpanded] = useState(false);
   const isEditingTemplateStyle = useRef(false); // 跟踪用户是否正在编辑风格描述
   const lastProjectId = useRef<string | null>(null); // 跟踪上一次的项目ID
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
@@ -599,46 +597,18 @@ export const SlidePreview: React.FC = () => {
     const exportTaskId = `export-${Date.now()}`;
     
     try {
-      // Add task to export panel immediately
-      addTask({
-        id: exportTaskId,
-        taskId: '', // Will be updated for async tasks
-        projectId,
-        type: type as ExportTaskType,
-        status: 'PROCESSING',
-        pageIds: pageIds, // undefined means all pages
-      });
-      
-      show({ message: '导出任务已开始，可在导出任务面板查看进度', type: 'success' });
-      
-      if (type === 'pptx') {
-        // Synchronous export - direct download
-        const response = await apiExportPPTX(projectId, pageIds);
+      if (type === 'pptx' || type === 'pdf') {
+        // Synchronous export - direct download, create completed task directly
+        const response = type === 'pptx' 
+          ? await apiExportPPTX(projectId, pageIds)
+          : await apiExportPDF(projectId, pageIds);
         const downloadUrl = response.data?.download_url || response.data?.download_url_absolute;
         if (downloadUrl) {
-          // Update task with download URL and mark as completed
           addTask({
             id: exportTaskId,
             taskId: '',
             projectId,
-            type: 'pptx',
-            status: 'COMPLETED',
-            downloadUrl,
-            pageIds: pageIds,
-          });
-          window.open(downloadUrl, '_blank');
-        }
-      } else if (type === 'pdf') {
-        // Synchronous export - direct download
-        const response = await apiExportPDF(projectId, pageIds);
-        const downloadUrl = response.data?.download_url || response.data?.download_url_absolute;
-        if (downloadUrl) {
-          // Update task with download URL and mark as completed
-          addTask({
-            id: exportTaskId,
-            taskId: '',
-            projectId,
-            type: 'pdf',
+            type: type as ExportTaskType,
             status: 'COMPLETED',
             downloadUrl,
             pageIds: pageIds,
@@ -646,7 +616,18 @@ export const SlidePreview: React.FC = () => {
           window.open(downloadUrl, '_blank');
         }
       } else if (type === 'editable-pptx') {
-        // Async export - use export tasks store for background polling
+        // Async export - create processing task and start polling
+        addTask({
+          id: exportTaskId,
+          taskId: '', // Will be updated below
+          projectId,
+          type: 'editable-pptx',
+          status: 'PROCESSING',
+          pageIds: pageIds,
+        });
+        
+        show({ message: '导出任务已开始，可在导出任务面板查看进度', type: 'success' });
+        
         const response = await apiExportEditablePPTX(projectId, undefined, pageIds);
         const taskId = response.data?.task_id;
         

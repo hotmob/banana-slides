@@ -22,16 +22,7 @@ const getPageRangeText = (pageIds: string[] | undefined, pages: Page[]): string 
     return '全部';
   }
   
-  if (pageIds.length === 1) {
-    // 单个页面，找到索引
-    const pageIndex = pages.findIndex(p => (p.id || p.page_id) === pageIds[0]);
-    if (pageIndex >= 0) {
-      return `第${pageIndex + 1}页`;
-    }
-    return '1页';
-  }
-  
-  // 多个页面，找到最小和最大索引
+  // 找到所有页面的索引
   const indices: number[] = [];
   pageIds.forEach(pageId => {
     const index = pages.findIndex(p => (p.id || p.page_id) === pageId);
