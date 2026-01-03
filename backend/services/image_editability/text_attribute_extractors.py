@@ -324,12 +324,15 @@ class CaptionModelTextAttributeExtractor(TextAttributeExtractor):
                 font_color_rgb = (0, 0, 0)
             
             # 解析布尔值
-            is_bold = bool(result_json.get('is_bold', False))
-            is_italic = bool(result_json.get('is_italic', False))
+            # is_bold = bool(result_json.get('is_bold', False))
+            # is_italic = bool(result_json.get('is_italic', False))
+            is_bold = False # 全局信息缺失的情况下，识别效果不佳，暂时改为统一False
+            is_italic = False
             is_underline = bool(result_json.get('is_underline', False))
             
             # 解析文字对齐方式
-            text_alignment = result_json.get('text_alignment')
+            # text_alignment = result_json.get('text_alignment')
+            text_alignment = 'left'
             if text_alignment not in ('left', 'center', 'right', 'justify', None):
                 text_alignment = None
             

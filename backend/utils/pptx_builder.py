@@ -442,10 +442,10 @@ class PPTXBuilder:
             # Apply underline
             if hasattr(text_style, 'is_underline'):
                 paragraph.font.underline = text_style.is_underline
-        else:
-            # Fallback: Make title text bold (legacy behavior)
-            if text_level == 1 or text_level == 'title':
-                paragraph.font.bold = True
+            
+        # Make title text bold (legacy behavior)
+        if text_level == 1 or text_level == 'title':
+            paragraph.font.bold = True
         
         # Calculate bbox dimensions for logging
         bbox_width = bbox[2] - bbox[0]
