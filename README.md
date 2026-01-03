@@ -117,6 +117,12 @@
 
 
 ## 🔥 近期更新
+- 【1-3】 : 可编辑pptx导出全面升级：
+  1. 支持最大程度还原图片中文字的字号、颜色、加粗等样式；
+  2. 支持了识别表格中的文字内容；
+  3. 更精确的文字大小和文字位置还原逻辑
+  4. 优化导出工作流，大大减少了导出后背景图残留文字的现象；
+
 - 【12-27】: 加入了对无图片模板模式的支持和较高质量的文字预设，现在可以通过纯文字描述的方式来控制ppt页面风格
 - 【12-24】: main分支加入了基于nano-banana-pro背景提取的可编辑pptx导出方法（目前Beta）
 
@@ -132,8 +138,8 @@
 | ✅ 已完成 | 素材模块: 素材生成、上传等 |
 | ✅ 已完成 | 支持多种文件的上传+解析 |
 | ✅ 已完成 | 支持Vibe口头调整大纲和描述 |
-| ✅ 已完成 | 支持初步可编辑版pptx文件导出（mineru） |
-| 🔄 进行中 | 支持已生成图片的元素分割和进一步编辑（segment + inpaint） |
+| ✅ 已完成 | 初步支持可编辑版本pptx文件导出 |
+| 🔄 进行中 | 支持多层次、精确抠图的可编辑pptx导出 |
 | 🔄 进行中 | 网络搜索 |
 | 🔄 进行中 | Agent 模式 |
 | 🧭 规划中 | 优化前端加载速度 |
@@ -192,6 +198,9 @@ OPENAI_API_BASE=https://api.openai.com/v1
 # GOOGLE_APPLICATION_CREDENTIALS=./gcp-service-account.json
 ...
 ```
+
+**使用新版可编辑导出配置方法**: 在[百度智能云平台](https://console.bce.baidu.com/ai-engine/ocr/overview/index?type=1)中创建应用并获取API KEY，填写在.env文件中的BAIDU_OCR_API_KEY字段（有充足的免费使用额度）。
+
 
 <details>
   <summary>📒 使用 Vertex AI（GCP 免费额度）</summary>
