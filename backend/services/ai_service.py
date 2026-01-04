@@ -105,7 +105,7 @@ class AIService:
             text: Markdown 文本，可能包含 ![](url) 格式的图片
             
         Returns:
-            图片 URL 列表（包括 http/https URL 和 /files/mineru/ 开头的本地路径）
+            图片 URL 列表（包括 http/https URL 和 /files/ 开头的本地路径）
         """
         if not text:
             return []
@@ -114,11 +114,11 @@ class AIService:
         pattern = r'!\[.*?\]\((.*?)\)'
         matches = re.findall(pattern, text)
         
-        # 过滤掉空字符串，支持 http/https URL 和 /files/mineru/ 开头的本地路径
+        # 过滤掉空字符串，支持 http/https URL 和 /files/ 开头的本地路径（包括 mineru、materials 等）
         urls = []
         for url in matches:
             url = url.strip()
-            if url and (url.startswith('http://') or url.startswith('https://') or url.startswith('/files/mineru/')):
+            if url and (url.startswith('http://') or url.startswith('https://') or url.startswith('/files/')):
                 urls.append(url)
         
         return urls
