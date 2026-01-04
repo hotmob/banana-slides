@@ -18,6 +18,45 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ColoredSegment:
+    """
+    带颜色的文字片段
+    
+    用于表示一段文字及其颜色
+    """
+    text: str  # 文字内容
+    color_rgb: Tuple[int, int, int] = (0, 0, 0)  # RGB颜色 (0-255)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            'text': self.text,
+            'color': f"#{self.color_rgb[0]:02x}{self.color_rgb[1]:02x}{self.color_rgb[2]:02x}"
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ColoredSegment':
+        """从字典创建实例"""
+        text = data.get('text', '')
+        color = data.get('color', '#000000')
+        # 解析颜色
+        if isinstance(color, str):
+            color = color.lstrip('#')
+            if len(color) == 3:
+                color = ''.join(c * 2 for c in color)
+            try:
+                r = int(color[0:2], 16)
+                g = int(color[2:4], 16)
+                b = int(color[4:6], 16)
+                color_rgb = (r, g, b)
+            except (ValueError, IndexError):
+                color_rgb = (0, 0, 0)
+        else:
+            color_rgb = (0, 0, 0)
+        return cls(text=text, color_rgb=color_rgb)
+
+
+@dataclass
 class TextStyleResult:
     """
     文字样式数据结构
@@ -28,8 +67,12 @@ class TextStyleResult:
         字体大小不在此处提取，因为传入的是裁剪后的子图，无法准确估算。
         字体大小应由 PPTXBuilder.calculate_font_size 根据bbox计算。
     """
-    # 字体颜色 RGB (0-255)
+    # 字体颜色 RGB (0-255) - 默认颜色，用于整体颜色或兜底
     font_color_rgb: Tuple[int, int, int] = (0, 0, 0)
+    
+    # 带颜色的文字片段列表 - 支持一行文字多种颜色
+    # 如果有值，渲染时优先使用这个，文字内容也以这里的为准
+    colored_segments: List[ColoredSegment] = field(default_factory=list)
     
     # 是否粗体
     is_bold: bool = False
@@ -54,6 +97,8 @@ class TextStyleResult:
         result = asdict(self)
         # 将 tuple 转换为 list 以便 JSON 序列化
         result['font_color_rgb'] = list(self.font_color_rgb)
+        # 转换 colored_segments
+        result['colored_segments'] = [seg.to_dict() if isinstance(seg, ColoredSegment) else seg for seg in self.colored_segments]
         return result
     
     @classmethod
@@ -61,12 +106,31 @@ class TextStyleResult:
         """从字典创建实例"""
         if 'font_color_rgb' in data and isinstance(data['font_color_rgb'], list):
             data['font_color_rgb'] = tuple(data['font_color_rgb'])
+        # 转换 colored_segments
+        if 'colored_segments' in data:
+            data['colored_segments'] = [
+                ColoredSegment.from_dict(seg) if isinstance(seg, dict) else seg 
+                for seg in data['colored_segments']
+            ]
         return cls(**data)
     
     def get_hex_color(self) -> str:
-        """获取十六进制颜色值"""
+        """获取十六进制颜色值（默认颜色）"""
         r, g, b = self.font_color_rgb
         return f"#{r:02x}{g:02x}{b:02x}"
+    
+    def get_full_text(self) -> str:
+        """获取完整的文字内容（从 colored_segments 拼接）"""
+        if self.colored_segments:
+            return ''.join(seg.text for seg in self.colored_segments)
+        return ""
+    
+    def has_multi_color(self) -> bool:
+        """是否有多种颜色"""
+        if not self.colored_segments or len(self.colored_segments) <= 1:
+            return False
+        colors = set(seg.color_rgb for seg in self.colored_segments)
+        return len(colors) > 1
 
 
 class TextAttributeExtractor(ABC):
@@ -307,7 +371,9 @@ class CaptionModelTextAttributeExtractor(TextAttributeExtractor):
         解析AI返回的JSON结果
         
         Args:
-            result_json: AI返回的JSON字典
+            result_json: AI返回的JSON字典，支持两种格式：
+                - 新格式：包含 colored_segments 数组（文字-颜色对）
+                - 旧格式：包含 font_color 单一颜色
         
         Returns:
             TextStyleResult对象
@@ -316,12 +382,25 @@ class CaptionModelTextAttributeExtractor(TextAttributeExtractor):
             return TextStyleResult(confidence=0.0)
         
         try:
-            # 解析颜色（十六进制格式）
-            font_color_hex = result_json.get('font_color', '#000000')
-            if isinstance(font_color_hex, str):
-                font_color_rgb = self._hex_to_rgb(font_color_hex)
+            # 解析 colored_segments（新格式：支持一行多颜色）
+            colored_segments = []
+            segments_data = result_json.get('colored_segments', [])
+            
+            if segments_data and isinstance(segments_data, list):
+                for seg in segments_data:
+                    if isinstance(seg, dict):
+                        colored_segments.append(ColoredSegment.from_dict(seg))
+            
+            # 计算默认颜色（从 segments 取第一个，或用旧格式的 font_color）
+            if colored_segments:
+                font_color_rgb = colored_segments[0].color_rgb
             else:
-                font_color_rgb = (0, 0, 0)
+                # 兼容旧格式
+                font_color_hex = result_json.get('font_color', '#000000')
+                if isinstance(font_color_hex, str):
+                    font_color_rgb = self._hex_to_rgb(font_color_hex)
+                else:
+                    font_color_rgb = (0, 0, 0)
             
             # 解析布尔值
             is_bold = bool(result_json.get('is_bold', False))
@@ -335,6 +414,7 @@ class CaptionModelTextAttributeExtractor(TextAttributeExtractor):
             
             return TextStyleResult(
                 font_color_rgb=font_color_rgb,
+                colored_segments=colored_segments,
                 is_bold=is_bold,
                 is_italic=is_italic,
                 is_underline=is_underline,

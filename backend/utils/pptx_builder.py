@@ -338,14 +338,31 @@ class PPTXBuilder:
         
         Args:
             slide: Target slide
-            text: Text content
+            text: Text content (used as fallback if text_style has no colored_segments)
             bbox: Bounding box [x0, y0, x1, y1] in pixels
             text_level: Text level (1=title, 2=heading, etc.) or type string
             dpi: DPI for conversion (default: 96)
             align: Text alignment ('left', 'center', 'right')
             text_style: TextStyleResult object with font color, bold, italic etc. (optional)
+                        If text_style has colored_segments, those will be used for rendering
+                        and the text content will come from the segments.
         """
         dpi = dpi or self.DEFAULT_DPI
+        
+        # Check if we have colored segments (multi-color text)
+        has_colored_segments = (
+            text_style and 
+            hasattr(text_style, 'colored_segments') and 
+            text_style.colored_segments and 
+            len(text_style.colored_segments) > 0
+        )
+        
+        # Determine the actual text to use
+        # If we have colored_segments, use the text from segments (model's recognized text)
+        if has_colored_segments:
+            actual_text = ''.join(seg.text for seg in text_style.colored_segments)
+        else:
+            actual_text = text
         
         # Expand bbox slightly to prevent text overflow
         # MinerU bbox is tight, but font rendering may need extra space
@@ -364,19 +381,19 @@ class PPTXBuilder:
         # Add text box
         textbox = slide.shapes.add_textbox(left, top, width, height)
         text_frame = textbox.text_frame
-        text_frame.text = text
         text_frame.word_wrap = True
-        
-        # Set font size (pass original bbox in pixels and dpi)
-        font_size = self.calculate_font_size(bbox, text, text_level, dpi)
-        paragraph = text_frame.paragraphs[0]
-        paragraph.font.size = Pt(font_size)
         
         # Remove margins completely - MinerU bbox is tight, no extra space needed
         text_frame.margin_left = Inches(0)
         text_frame.margin_right = Inches(0)
         text_frame.margin_top = Inches(0)
         text_frame.margin_bottom = Inches(0)
+        
+        # Calculate font size
+        font_size = self.calculate_font_size(bbox, actual_text, text_level, dpi)
+        
+        # Get paragraph (will be configured below)
+        paragraph = text_frame.paragraphs[0]
         
         # Set alignment - text_style优先，否则使用参数
         effective_align = align
@@ -392,34 +409,56 @@ class PPTXBuilder:
         else:
             paragraph.alignment = PP_ALIGN.LEFT
         
-        # Apply text style if provided
+        # Get style attributes
+        is_bold = False
+        is_italic = False
+        is_underline = False
         if text_style:
-            # Apply font color
-            if hasattr(text_style, 'font_color_rgb') and text_style.font_color_rgb:
+            is_bold = getattr(text_style, 'is_bold', False)
+            is_italic = getattr(text_style, 'is_italic', False)
+            is_underline = getattr(text_style, 'is_underline', False)
+        
+        # Make title text bold (legacy behavior)
+        if text_level == 1 or text_level == 'title':
+            is_bold = True
+        
+        # Render text with colors
+        if has_colored_segments:
+            # Multi-color text: use runs for each segment
+            # Clear default text
+            paragraph.clear()
+            
+            for seg in text_style.colored_segments:
+                run = paragraph.add_run()
+                run.text = seg.text
+                run.font.size = Pt(font_size)
+                run.font.bold = is_bold
+                run.font.italic = is_italic
+                run.font.underline = is_underline
+                # Set segment-specific color
+                r, g, b = seg.color_rgb
+                run.font.color.rgb = RGBColor(r, g, b)
+            
+            style_info = f" | multi-color: {len(text_style.colored_segments)} segments"
+        else:
+            # Single color text: use simple text assignment
+            text_frame.text = actual_text
+            paragraph.font.size = Pt(font_size)
+            paragraph.font.bold = is_bold
+            paragraph.font.italic = is_italic
+            paragraph.font.underline = is_underline
+            
+            # Apply single font color if provided
+            if text_style and hasattr(text_style, 'font_color_rgb') and text_style.font_color_rgb:
                 r, g, b = text_style.font_color_rgb
                 paragraph.font.color.rgb = RGBColor(r, g, b)
             
-            # Apply bold
-            if hasattr(text_style, 'is_bold'):
-                paragraph.font.bold = text_style.is_bold
-            
-            # Apply italic
-            if hasattr(text_style, 'is_italic'):
-                paragraph.font.italic = text_style.is_italic
-            
-            # Apply underline
-            if hasattr(text_style, 'is_underline'):
-                paragraph.font.underline = text_style.is_underline
-            
-        # Make title text bold (legacy behavior)
-        if text_level == 1 or text_level == 'title':
-            paragraph.font.bold = True
+            style_info = f" | color={text_style.font_color_rgb if text_style else 'default'}"
         
         # Calculate bbox dimensions for logging
         bbox_width = bbox[2] - bbox[0]
         bbox_height = bbox[3] - bbox[1]
-        style_info = f" | style: color={text_style.font_color_rgb if text_style else 'default'}" if text_style else ""
-        logger.debug(f"Text: '{text[:35]}' | box: {bbox_width}x{bbox_height}px | font: {font_size:.1f}pt | chars: {len(text)}{style_info}")
+        logger.debug(f"Text: '{actual_text[:35]}' | box: {bbox_width}x{bbox_height}px | font: {font_size:.1f}pt | chars: {len(actual_text)}{style_info}")
     
     def add_image_element(
         self,
